@@ -1,0 +1,632 @@
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useCanvasStore } from '../store/canvasStore';
+import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, Bounds } from '../types';
+import { drawElement, drawGrid } from '../utils/drawing';
+import { generateId, hitTestElement, screenToCanvas, hitTestResizeHandle, getResizeCursor, resizeElement, getElementBounds } from '../utils/helpers';
+
+const Canvas: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState<string>('');
+  const [resizeStartPoint, setResizeStartPoint] = useState<Point>({ x: 0, y: 0 });
+  const [originalBounds, setOriginalBounds] = useState<Bounds>({ x: 0, y: 0, width: 0, height: 0 });
+  const [dragStartPoint, setDragStartPoint] = useState<Point>({ x: 0, y: 0 });
+  const [currentElement, setCurrentElement] = useState<DrawingElement | null>(null);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [textInput, setTextInput] = useState('');
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [hasMouseMoved, setHasMouseMoved] = useState(false);
+  const [lastClickElement, setLastClickElement] = useState<string | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStartPoint, setPanStartPoint] = useState<Point>({ x: 0, y: 0 });
+  const [panStartScroll, setPanStartScroll] = useState<Point>({ x: 0, y: 0 });
+
+  const {
+    elements,
+    currentTool,
+    currentStrokeColor,
+    currentFillColor,
+    currentStrokeWidth,
+    currentOpacity,
+    selectedElementIds,
+    zoom,
+    scrollX,
+    scrollY,
+    addElement,
+    updateElement,
+    setSelectedElements,
+    pushToHistory,
+    setScroll,
+  } = useCanvasStore();
+
+  const selectedElements = elements.filter(el => selectedElementIds.includes(el.id));
+  const pan = { x: scrollX, y: scrollY };
+
+  const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom,
+    };
+  }, [pan, zoom]);
+
+  const startTextEditing = useCallback((element: TextElement, point?: Point) => {
+    setIsEditingText(true);
+    setEditingTextId(element.id);
+    setTextInput(element.text || '');
+    setSelectedElements([element.id]);
+
+    // Position textarea over the text element
+    setTimeout(() => {
+      const textarea = textareaRef.current;
+      const canvas = canvasRef.current;
+      if (textarea && canvas) {
+        const rect = canvas.getBoundingClientRect();
+        
+        // Calculate exact position with zoom and pan
+        const x = element.x * zoom + pan.x + rect.left;
+        const y = element.y * zoom + pan.y + rect.top;
+        
+        // Calculate size with zoom
+        const width = Math.max(element.width * zoom, 150);
+        const height = Math.max(element.height * zoom, 30);
+        const fontSize = Math.max((element.fontSize || 20) * zoom, 12);
+        
+        textarea.style.position = 'absolute';
+        textarea.style.left = `${x}px`;
+        textarea.style.top = `${y}px`;
+        textarea.style.width = `${width}px`;
+        textarea.style.height = `${height}px`;
+        textarea.style.fontSize = `${fontSize}px`;
+        textarea.style.fontFamily = element.fontFamily || 'Arial';
+        textarea.style.color = element.strokeColor;
+        textarea.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        textarea.style.border = '2px solid #1971c2';
+        textarea.style.borderRadius = '4px';
+        textarea.style.padding = '4px';
+        textarea.style.margin = '0';
+        textarea.style.outline = 'none';
+        textarea.style.resize = 'none';
+        textarea.style.overflow = 'hidden';
+        textarea.style.zIndex = '1000';
+        textarea.style.display = 'block';
+        textarea.style.lineHeight = '1.2';
+        textarea.style.textAlign = element.textAlign || 'left';
+        textarea.style.whiteSpace = 'pre-wrap';
+        textarea.style.wordWrap = 'break-word';
+        
+        textarea.focus();
+        textarea.select();
+      }
+    }, 0);
+  }, [zoom, pan, setSelectedElements]);
+
+  const finishTextEditing = useCallback(() => {
+    if (!isEditingText || !editingTextId) return;
+
+    const element = elements.find(el => el.id === editingTextId) as TextElement;
+    if (!element) return;
+
+    if (textInput.trim() === '') {
+      // Remove empty text elements
+      const filteredElements = elements.filter(el => el.id !== editingTextId);
+      useCanvasStore.setState({ elements: filteredElements });
+    } else {
+      // Update text and calculate new dimensions
+      const lines = textInput.split('\n');
+      const fontSize = element.fontSize || 20;
+      
+      // Simple calculation based on font size and text content
+      const estimatedCharWidth = fontSize * 0.6; // Approximate character width
+      const lineHeight = fontSize * 1.2;
+      
+      // Calculate width based on longest line
+      const maxLineLength = Math.max(...lines.map(line => line.length), 1);
+      const newWidth = Math.max(maxLineLength * estimatedCharWidth + 16, 100); // Add padding
+      const newHeight = Math.max(lines.length * lineHeight + 16, 40); // Add padding
+
+      updateElement(editingTextId, {
+        text: textInput,
+        width: newWidth,
+        height: newHeight,
+      });
+    }
+
+    // Clean up
+    setIsEditingText(false);
+    setEditingTextId(null);
+    setTextInput('');
+    
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.display = 'none';
+    }
+
+    pushToHistory();
+  }, [isEditingText, editingTextId, textInput, elements, updateElement, pushToHistory]);
+
+  const cancelTextEditing = useCallback(() => {
+    setIsEditingText(false);
+    setEditingTextId(null);
+    setTextInput('');
+    
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.display = 'none';
+    }
+  }, []);
+
+  const createTextElement = useCallback((point: Point) => {
+    const textElement: TextElement = {
+      id: generateId(),
+      type: 'text',
+      x: point.x,
+      y: point.y,
+      width: 150,
+      height: 30,
+      strokeColor: currentStrokeColor,
+      fillColor: currentFillColor,
+      strokeWidth: currentStrokeWidth,
+      opacity: currentOpacity,
+      roughness: 1,
+      angle: 0,
+      isDeleted: false,
+      seed: Math.floor(Math.random() * 2 ** 31),
+      text: '',
+      fontSize: 20, // Base font size - will be auto-adjusted by drawText
+      fontFamily: 'Arial',
+      textAlign: 'left',
+    };
+    
+    addElement(textElement);
+    setSelectedElements([textElement.id]);
+    useCanvasStore.getState().setCurrentTool('select');
+    startTextEditing(textElement, point);
+  }, [currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity, addElement, startTextEditing, setSelectedElements]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const point = getCanvasPoint(e.clientX, e.clientY);
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTime;
+    setLastClickTime(now);
+
+    // If editing text, finish it first
+    if (isEditingText) {
+      finishTextEditing();
+      return;
+    }
+
+    // Check for double-click on text elements (within 500ms)
+    if (timeSinceLastClick < 500) {
+      const clickedElement = elements.find(el => 
+        el.type === 'text' && hitTestElement(el, point)
+      ) as TextElement;
+      
+      if (clickedElement && lastClickElement === clickedElement.id) {
+        startTextEditing(clickedElement, point);
+        return;
+      }
+    }
+
+    // Update last clicked element for double-click tracking
+    const clickedElement = elements.find(el => hitTestElement(el, point));
+    setLastClickElement(clickedElement ? clickedElement.id : null);
+
+    // Handle tool-specific actions
+    if (currentTool === 'text') {
+      createTextElement(point);
+      return;
+    }
+
+    // Handle Pan tool
+    if (currentTool === 'pan') {
+      setIsPanning(true);
+      setPanStartPoint({ x: e.clientX, y: e.clientY });
+      setPanStartScroll({ x: scrollX, y: scrollY });
+      document.body.style.cursor = 'grabbing';
+      return;
+    }
+
+    // Rest of the existing mouse down logic...
+    if (currentTool === 'select') {
+      // First, check if we're clicking on a resize handle of a selected element
+      let resizeHandleClicked = false;
+      for (const elementId of selectedElementIds) {
+        const selectedElement = elements.find(el => el.id === elementId);
+        if (selectedElement) {
+          const direction = hitTestResizeHandle(selectedElement, point, zoom);
+          if (direction) {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsResizing(true);
+            setResizeDirection(direction);
+            setResizeStartPoint(point);
+            setOriginalBounds(getElementBounds(selectedElement));
+            document.body.style.cursor = getResizeCursor(direction);
+            resizeHandleClicked = true;
+            break;
+          }
+        }
+      }
+      
+      if (!resizeHandleClicked) {
+        // Check if we're clicking on an element
+        const clickedElement = elements.find(el => hitTestElement(el, point));
+        
+        if (clickedElement) {
+          // Start dragging
+          setIsDragging(true);
+          setDragStartPoint(point);
+          
+          // If element is not selected, select it
+          if (!selectedElementIds.includes(clickedElement.id)) {
+            setSelectedElements([clickedElement.id]);
+          }
+        } else {
+          // Clear selection if clicking on empty space
+          setSelectedElements([]);
+        }
+      }
+    } else if (currentTool === 'rectangle' || currentTool === 'ellipse' || currentTool === 'diamond') {
+      const element: DrawingElement = {
+        id: generateId(),
+        type: currentTool,
+        x: point.x,
+        y: point.y,
+        width: 0,
+        height: 0,
+        strokeColor: currentStrokeColor,
+        fillColor: currentFillColor,
+        strokeWidth: currentStrokeWidth,
+        opacity: currentOpacity,
+        roughness: 1,
+        angle: 0,
+        isDeleted: false,
+        seed: Math.floor(Math.random() * 2 ** 31),
+      };
+      
+      setCurrentElement(element);
+      setIsDrawing(true);
+      setHasMouseMoved(false);
+      addElement(element);
+    } else if (currentTool === 'arrow' || currentTool === 'line') {
+      const element: ArrowElement | LineElement = {
+        id: generateId(),
+        type: currentTool,
+        x: point.x,
+        y: point.y,
+        width: 0,
+        height: 0,
+        strokeColor: currentStrokeColor,
+        fillColor: currentFillColor,
+        strokeWidth: currentStrokeWidth,
+        opacity: currentOpacity,
+        roughness: 1,
+        angle: 0,
+        isDeleted: false,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        points: [{ x: 0, y: 0 }, { x: 0, y: 0 }],
+      } as ArrowElement | LineElement;
+      
+      setCurrentElement(element);
+      setIsDrawing(true);
+      setHasMouseMoved(false);
+      addElement(element);
+    } else if (currentTool === 'pen') {
+      const element: PenElement = {
+        id: generateId(),
+        type: 'pen',
+        x: point.x,
+        y: point.y,
+        width: 0,
+        height: 0,
+        strokeColor: currentStrokeColor,
+        fillColor: currentFillColor,
+        strokeWidth: currentStrokeWidth,
+        opacity: currentOpacity,
+        roughness: 1,
+        angle: 0,
+        isDeleted: false,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        points: [{ x: 0, y: 0 }],
+      };
+      
+      setCurrentElement(element);
+      setIsDrawing(true);
+      setHasMouseMoved(false);
+      addElement(element);
+    }
+  }, [
+    getCanvasPoint, lastClickTime, isEditingText, finishTextEditing, elements, 
+    currentTool, selectedElementIds, createTextElement, startTextEditing, 
+    currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity, 
+    addElement, setSelectedElements, lastClickElement
+  ]);
+
+  // Rest of the existing mouse handlers remain the same...
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const point = getCanvasPoint(e.clientX, e.clientY);
+
+    if (isResizing && resizeDirection && originalBounds) {
+      const selectedElement = elements.find(el => selectedElementIds.includes(el.id));
+      if (selectedElement) {
+        const updates = resizeElement(selectedElement, resizeDirection, resizeStartPoint, point, originalBounds);
+        updateElement(selectedElement.id, updates);
+      }
+    } else if (isDragging && selectedElementIds.length > 0) {
+      const dx = point.x - dragStartPoint.x;
+      const dy = point.y - dragStartPoint.y;
+      
+      selectedElementIds.forEach((elementId: string) => {
+        const element = elements.find(el => el.id === elementId);
+        if (element) {
+          if (element.type === 'pen' || element.type === 'arrow' || element.type === 'line') {
+            const newPoints = (element as PenElement | ArrowElement | LineElement).points.map((pt) => ({
+              x: pt.x,
+              y: pt.y
+            }));
+            updateElement(elementId, {
+              x: element.x + dx,
+              y: element.y + dy,
+              points: newPoints,
+            });
+          } else {
+            updateElement(elementId, {
+              x: element.x + dx,
+              y: element.y + dy,
+            });
+          }
+        }
+      });
+      
+      setDragStartPoint(point);
+    } else if (isDrawing && currentElement) {
+      setHasMouseMoved(true);
+      
+      const width = Math.abs(point.x - currentElement.x);
+      const height = Math.abs(point.y - currentElement.y);
+      const x = Math.min(point.x, currentElement.x);
+      const y = Math.min(point.y, currentElement.y);
+
+      if (currentElement.type === 'arrow' || currentElement.type === 'line') {
+        const dx = point.x - currentElement.x;
+        const dy = point.y - currentElement.y;
+        updateElement(currentElement.id, {
+          width: Math.abs(dx),
+          height: Math.abs(dy),
+          points: [{ x: 0, y: 0 }, { x: dx, y: dy }],
+        });
+      } else if (currentElement.type === 'pen') {
+        // Sempre use a versão mais recente do elemento armazenado para não perder pontos anteriores
+        const elementInStore = elements.find(el => el.id === currentElement.id) as PenElement;
+        const elementOrigin = elementInStore || (currentElement as PenElement);
+
+        const dx = point.x - elementOrigin.x;
+        const dy = point.y - elementOrigin.y;
+        const currentPoints = elementOrigin.points;
+        
+        // Always add points during mouse movement for smooth drawing
+        const newPoints = [...currentPoints, { x: dx, y: dy }];
+        
+        const minX = Math.min(...newPoints.map(p => p.x));
+        const minY = Math.min(...newPoints.map(p => p.y));
+        const maxX = Math.max(...newPoints.map(p => p.x));
+        const maxY = Math.max(...newPoints.map(p => p.y));
+        
+        updateElement(currentElement.id, {
+          points: newPoints,
+          width: Math.max(maxX - minX, 1),
+          height: Math.max(maxY - minY, 1),
+        });
+      } else {
+        updateElement(currentElement.id, {
+          x,
+          y,
+          width,
+          height,
+        });
+      }
+    } else if (currentTool === 'select') {
+      // Update cursor based on hover state
+      const hoveredElement = elements.find(el => hitTestElement(el, point));
+      if (hoveredElement && selectedElementIds.includes(hoveredElement.id)) {
+        const direction = hitTestResizeHandle(hoveredElement, point, zoom);
+        if (direction) {
+          document.body.style.cursor = getResizeCursor(direction);
+        } else {
+          document.body.style.cursor = 'move';
+        }
+      } else if (hoveredElement) {
+        document.body.style.cursor = 'pointer';
+      } else {
+        document.body.style.cursor = 'default';
+      }
+    }
+
+    if (isPanning) {
+      const dx = e.clientX - panStartPoint.x;
+      const dy = e.clientY - panStartPoint.y;
+      setScroll(panStartScroll.x + dx, panStartScroll.y + dy);
+      return;
+    }
+
+    // Se a ferramenta atual é pan e não estamos arrastando, use cursor de mão
+    if (!isPanning && currentTool === 'pan') {
+      document.body.style.cursor = 'grab';
+    }
+  }, [
+    getCanvasPoint, isResizing, resizeDirection, originalBounds, isDragging, 
+    selectedElementIds, isDrawing, currentElement, currentTool, elements, 
+    resizeStartPoint, dragStartPoint, updateElement, isPanning, panStartPoint, panStartScroll, setScroll
+  ]);
+
+  const handleMouseUp = useCallback(() => {
+    if (isDrawing && currentElement) {
+      // Only apply default size if there was no mouse movement (true single click)
+      if (!hasMouseMoved) {
+        const defaultSize = 50; // Default size for single-click creation
+        
+        if (currentElement.type === 'arrow' || currentElement.type === 'line') {
+          // For line-based elements, create a line from start to default end point
+          updateElement(currentElement.id, {
+            width: defaultSize,
+            height: 0,
+            points: [{ x: 0, y: 0 }, { x: defaultSize, y: 0 }],
+          });
+        } else if (currentElement.type === 'pen') {
+          // For pen, create a small circular dot
+          updateElement(currentElement.id, {
+            width: 8,
+            height: 8,
+            points: [
+              { x: 0, y: 4 },
+              { x: 1, y: 2 },
+              { x: 3, y: 0 },
+              { x: 5, y: 1 },
+              { x: 8, y: 4 },
+              { x: 5, y: 7 },
+              { x: 3, y: 8 },
+              { x: 1, y: 6 },
+              { x: 0, y: 4 }
+            ],
+          });
+        } else {
+          // For shape elements (rectangle, circle, diamond)
+          updateElement(currentElement.id, {
+            width: defaultSize,
+            height: defaultSize,
+          });
+        }
+      }
+      
+      // Automatically select the created element and switch to select tool
+      setSelectedElements([currentElement.id]);
+      useCanvasStore.getState().setCurrentTool('select');
+      
+      pushToHistory();
+    }
+    
+    setIsDrawing(false);
+    setIsDragging(false);
+    setIsResizing(false);
+    setCurrentElement(null);
+    setResizeDirection('');
+    setHasMouseMoved(false); // Reset movement flag
+    document.body.style.cursor = 'default';
+
+    if (isPanning) {
+      setIsPanning(false);
+      document.body.style.cursor = 'default';
+    }
+  }, [isDrawing, currentElement, hasMouseMoved, pushToHistory, updateElement, setSelectedElements, isPanning]);
+
+  // Handle keyboard events
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditingText) {
+        if (e.key === 'Escape') {
+          cancelTextEditing();
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          finishTextEditing();
+        }
+        return;
+      }
+
+      // Handle other keyboard shortcuts...
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedElementIds.length > 0) {
+          selectedElementIds.forEach((elementId: string) => {
+            updateElement(elementId, { isDeleted: true });
+          });
+          setSelectedElements([]);
+          pushToHistory();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isEditingText, selectedElementIds, updateElement, setSelectedElements, pushToHistory, cancelTextEditing, finishTextEditing]);
+
+  // Handle text input changes
+  const handleTextInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setTextInput(e.target.value);
+  }, []);
+
+  // Handle textarea blur
+  const handleTextareaBlur = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Only finish editing if the blur wasn't caused by clicking on the canvas
+    setTimeout(() => {
+      if (isEditingText) {
+        finishTextEditing();
+      }
+    }, 100);
+  }, [isEditingText, finishTextEditing]);
+
+  // Render canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    // Clear canvas
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    // Apply zoom and pan
+    ctx.save();
+    ctx.translate(pan.x, pan.y);
+    ctx.scale(zoom, zoom);
+
+    // Draw grid
+    drawGrid(ctx, scrollX, scrollY, zoom, rect.width, rect.height);
+
+    // Draw elements
+    elements.forEach(element => {
+      if (!element.isDeleted) {
+        const isBeingEdited = editingTextId === element.id;
+        drawElement(ctx, element, selectedElementIds.includes(element.id), zoom, isBeingEdited);
+      }
+    });
+
+    ctx.restore();
+  }, [elements, selectedElementIds, zoom, pan, scrollX, scrollY, editingTextId]);
+
+  return (
+    <div className="relative w-full h-full">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full cursor-crosshair"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      />
+      <textarea
+        ref={textareaRef}
+        value={textInput}
+        onChange={handleTextInputChange}
+        onBlur={handleTextareaBlur}
+        style={{ display: 'none' }}
+        className="absolute"
+      />
+    </div>
+  );
+};
+
+export default Canvas;
