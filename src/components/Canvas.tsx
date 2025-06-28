@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
 import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, Bounds } from '../types';
 import { drawElement, drawGrid } from '../utils/drawing';
-import { generateId, hitTestElement, screenToCanvas, hitTestResizeHandle, getResizeCursor, resizeElement, getElementBounds } from '../utils/helpers';
+import { generateId, hitTestElement, hitTestResizeHandle, getResizeCursor, resizeElement, getElementBounds } from '../utils/helpers';
 
 const Canvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,6 +24,8 @@ const Canvas: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const [panStartPoint, setPanStartPoint] = useState<Point>({ x: 0, y: 0 });
   const [panStartScroll, setPanStartScroll] = useState<Point>({ x: 0, y: 0 });
+  const [lastClickPosition, setLastClickPosition] = useState<Point | null>(null);
+  const [elementCycleIndex, setElementCycleIndex] = useState<number>(0);
 
   const {
     elements,
@@ -43,7 +45,7 @@ const Canvas: React.FC = () => {
     setScroll,
   } = useCanvasStore();
 
-  const selectedElements = elements.filter(el => selectedElementIds.includes(el.id));
+  // Elementos selecionados para uso em outras partes do código
   const pan = { x: scrollX, y: scrollY };
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
@@ -57,7 +59,7 @@ const Canvas: React.FC = () => {
     };
   }, [pan, zoom]);
 
-  const startTextEditing = useCallback((element: TextElement, point?: Point) => {
+  const startTextEditing = useCallback((element: TextElement) => {
     setIsEditingText(true);
     setEditingTextId(element.id);
     setTextInput(element.text || '');
@@ -188,7 +190,7 @@ const Canvas: React.FC = () => {
     addElement(textElement);
     setSelectedElements([textElement.id]);
     useCanvasStore.getState().setCurrentTool('select');
-    startTextEditing(textElement, point);
+    startTextEditing(textElement);
   }, [currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity, addElement, startTextEditing, setSelectedElements]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -210,7 +212,7 @@ const Canvas: React.FC = () => {
       ) as TextElement;
       
       if (clickedElement && lastClickElement === clickedElement.id) {
-        startTextEditing(clickedElement, point);
+        startTextEditing(clickedElement);
         return;
       }
     }
@@ -258,22 +260,60 @@ const Canvas: React.FC = () => {
       }
       
       if (!resizeHandleClicked) {
-        // Check if we're clicking on an element
-        const clickedElement = elements.find(el => hitTestElement(el, point));
+        // Check for elements at the clicked position
+        const elementsAtPoint = elements
+          .filter(el => !el.isDeleted && hitTestElement(el, point))
+          .sort((a, b) => elements.indexOf(b) - elements.indexOf(a)); // Sort by z-index (reverse order in array)
         
-        if (clickedElement) {
+        if (elementsAtPoint.length > 0) {
           // Start dragging
           setIsDragging(true);
           setDragStartPoint(point);
           
-          // If element is not selected, select it
-          if (!selectedElementIds.includes(clickedElement.id)) {
-            setSelectedElements([clickedElement.id]);
+          // Check if we're clicking at the same position as before
+          const isSamePosition = lastClickPosition && 
+            Math.abs(lastClickPosition.x - point.x) < 5 && 
+            Math.abs(lastClickPosition.y - point.y) < 5;
+          
+          // If clicking at the same position and there are multiple elements
+          if (isSamePosition && elementsAtPoint.length > 1 && timeSinceLastClick < 500) {
+            // Cycle through elements at this position
+            const newIndex = (elementCycleIndex + 1) % elementsAtPoint.length;
+            setElementCycleIndex(newIndex);
+            setSelectedElements([elementsAtPoint[newIndex].id]);
+            
+            // Show a visual indicator that we've cycled to a new element
+            const indicator = document.createElement('div');
+            indicator.textContent = `${newIndex + 1}/${elementsAtPoint.length}`;
+            indicator.style.position = 'absolute';
+            indicator.style.left = `${e.clientX + 15}px`;
+            indicator.style.top = `${e.clientY - 15}px`;
+            indicator.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            indicator.style.color = 'white';
+            indicator.style.padding = '3px 6px';
+            indicator.style.borderRadius = '3px';
+            indicator.style.fontSize = '12px';
+            indicator.style.pointerEvents = 'none';
+            indicator.style.zIndex = '9999';
+            document.body.appendChild(indicator);
+            
+            setTimeout(() => {
+              document.body.removeChild(indicator);
+            }, 1000);
+          } else {
+            // First click or different position, select the top element
+            setElementCycleIndex(0);
+            setSelectedElements([elementsAtPoint[0].id]);
           }
+          
+          // Update last click position
+          setLastClickPosition(point);
         } else {
           // Clear selection if clicking on empty space
           setSelectedElements([]);
-        }
+          setElementCycleIndex(0);
+          setLastClickPosition(null);
+        }  
       }
     } else if (currentTool === 'rectangle' || currentTool === 'ellipse' || currentTool === 'diamond') {
       const element: DrawingElement = {
@@ -566,7 +606,7 @@ const Canvas: React.FC = () => {
   }, []);
 
   // Handle textarea blur
-  const handleTextareaBlur = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+  const handleTextareaBlur = useCallback(() => {
     // Only finish editing if the blur wasn't caused by clicking on the canvas
     setTimeout(() => {
       if (isEditingText) {
