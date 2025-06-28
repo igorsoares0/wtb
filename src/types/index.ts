@@ -68,6 +68,10 @@ export interface TextElement extends BaseElement {
   fontSize: number;
   fontFamily: string;
   textAlign: 'left' | 'center' | 'right';
+  originalWidth?: number;
+  originalHeight?: number;
+  originalFontSize?: number;
+  userSetFontSize?: boolean;
 }
 
 export interface PenElement extends BaseElement {

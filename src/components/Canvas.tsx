@@ -248,6 +248,7 @@ const Canvas: React.FC = () => {
             setIsResizing(true);
             setResizeDirection(direction);
             setResizeStartPoint(point);
+            // Use the same bounds logic for all elements
             setOriginalBounds(getElementBounds(selectedElement));
             document.body.style.cursor = getResizeCursor(direction);
             resizeHandleClicked = true;
@@ -367,22 +368,12 @@ const Canvas: React.FC = () => {
       selectedElementIds.forEach((elementId: string) => {
         const element = elements.find(el => el.id === elementId);
         if (element) {
-          if (element.type === 'pen' || element.type === 'arrow' || element.type === 'line') {
-            const newPoints = (element as PenElement | ArrowElement | LineElement).points.map((pt) => ({
-              x: pt.x,
-              y: pt.y
-            }));
-            updateElement(elementId, {
-              x: element.x + dx,
-              y: element.y + dy,
-              points: newPoints,
-            });
-          } else {
-            updateElement(elementId, {
-              x: element.x + dx,
-              y: element.y + dy,
-            });
-          }
+          // Simplified dragging logic - just update position for all elements
+          // Points are relative to element position, so they don't need to be modified
+          updateElement(elementId, {
+            x: element.x + dx,
+            y: element.y + dy,
+          });
         }
       });
       
@@ -404,7 +395,7 @@ const Canvas: React.FC = () => {
           points: [{ x: 0, y: 0 }, { x: dx, y: dy }],
         });
       } else if (currentElement.type === 'pen') {
-        // Sempre use a versão mais recente do elemento armazenado para não perder pontos anteriores
+        // Use a versão mais recente do elemento armazenado para não perder pontos anteriores
         const elementInStore = elements.find(el => el.id === currentElement.id) as PenElement;
         const elementOrigin = elementInStore || (currentElement as PenElement);
 
@@ -412,8 +403,21 @@ const Canvas: React.FC = () => {
         const dy = point.y - elementOrigin.y;
         const currentPoints = elementOrigin.points;
         
-        // Always add points during mouse movement for smooth drawing
-        const newPoints = [...currentPoints, { x: dx, y: dy }];
+        // Check minimum distance to avoid too many close points (smoother drawing)
+        const minDistance = 2; // Minimum distance between points
+        const lastPoint = currentPoints[currentPoints.length - 1];
+        const newPoint = { x: dx, y: dy };
+        
+        let newPoints = [...currentPoints];
+        
+        // Only add point if it's far enough from the last point
+        if (currentPoints.length === 0 || 
+            Math.sqrt(Math.pow(newPoint.x - lastPoint.x, 2) + Math.pow(newPoint.y - lastPoint.y, 2)) >= minDistance) {
+          newPoints = [...currentPoints, newPoint];
+        } else {
+          // Update the last point instead of adding a new one
+          newPoints[newPoints.length - 1] = newPoint;
+        }
         
         const minX = Math.min(...newPoints.map(p => p.x));
         const minY = Math.min(...newPoints.map(p => p.y));

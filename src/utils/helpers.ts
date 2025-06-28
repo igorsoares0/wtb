@@ -36,16 +36,56 @@ export function getElementBounds(element: DrawingElement): Bounds {
       const maxX = Math.max(...xs);
       const maxY = Math.max(...ys);
       
-      bounds = {
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-      };
+      const width = maxX - minX;
+      const height = maxY - minY;
+      
+      // For pen elements, add minimal padding for easier interaction but keep it simple
+      if (element.type === 'pen') {
+        const padding = 2; // Minimal padding for easier interaction
+        
+        bounds = {
+          x: minX - padding,
+          y: minY - padding,
+          width: Math.max(width + padding * 2, 1),
+          height: Math.max(height + padding * 2, 1),
+        };
+      } else {
+        bounds = {
+          x: minX,
+          y: minY,
+          width: Math.max(width, 1),
+          height: Math.max(height, 1),
+        };
+      }
     }
   }
   
   return bounds;
+}
+
+// Get actual bounds of pen element without padding (for resize calculations)
+export function getActualPenBounds(element: DrawingElement): Bounds {
+  if (element.type === 'pen') {
+    const pointsElement = element as any;
+    if (pointsElement.points && pointsElement.points.length > 0) {
+      const xs = pointsElement.points.map((p: Point) => element.x + p.x);
+      const ys = pointsElement.points.map((p: Point) => element.y + p.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      const maxX = Math.max(...xs);
+      const maxY = Math.max(...ys);
+      
+      return {
+        x: minX,
+        y: minY,
+        width: Math.max(maxX - minX, 1),
+        height: Math.max(maxY - minY, 1),
+      };
+    }
+  }
+  
+  // Fallback to regular bounds
+  return getElementBounds(element);
 }
 
 export function rotatePoint(point: Point, center: Point, angle: number): Point {
@@ -122,7 +162,8 @@ function hitTestLineElement(element: any, point: Point): boolean {
 function hitTestPenElement(element: any, point: Point): boolean {
   if (!element.points || element.points.length === 0) return false;
   
-  const tolerance = Math.max(element.strokeWidth || 2, 5);
+  // Increase tolerance for easier selection of pen elements
+  const tolerance = Math.max(element.strokeWidth || 2, 8); // Increased from 5 to 8
   
   // Handle single point case
   if (element.points.length === 1) {
@@ -133,7 +174,7 @@ function hitTestPenElement(element: any, point: Point): boolean {
     return distance(point, p1) <= tolerance;
   }
   
-  // Handle multiple points case
+  // Handle multiple points case - check against all line segments
   for (let i = 0; i < element.points.length - 1; i++) {
     const p1 = {
       x: element.x + element.points[i].x,
@@ -146,6 +187,29 @@ function hitTestPenElement(element: any, point: Point): boolean {
     
     if (distanceToLineSegment(point, p1, p2) <= tolerance) {
       return true;
+    }
+  }
+  
+  // Also check if point is within the bounding box with some tolerance
+  const bounds = getElementBounds(element);
+  const expandedBounds = {
+    x: bounds.x - tolerance,
+    y: bounds.y - tolerance,
+    width: bounds.width + tolerance * 2,
+    height: bounds.height + tolerance * 2,
+  };
+  
+  if (isPointInBounds(point, expandedBounds)) {
+    // If within expanded bounds, do a more detailed check
+    // Check distance to any point in the path
+    for (const pt of element.points) {
+      const absolutePoint = {
+        x: element.x + pt.x,
+        y: element.y + pt.y
+      };
+      if (distance(point, absolutePoint) <= tolerance) {
+        return true;
+      }
     }
   }
   
@@ -261,7 +325,7 @@ export function getResizeHandlesForElement(element: DrawingElement): { x: number
     }
   }
   
-  // For other elements, use corner handles
+  // For other elements (including pen), use the same bounds logic
   const bounds = getElementBounds(element);
   const { x, y, width, height } = bounds;
   
@@ -334,10 +398,12 @@ export function resizeElement(
       const newElementY = element.y + minY;
       
       // Normalize points to new element position
-      const normalizedPoints = newPoints.map(p => ({
-        x: p.x - minX,
-        y: p.y - minY,
-      }));
+      const normalizedPoints = newPoints.map((point: Point) => {
+        return {
+          x: point.x - minX,
+          y: point.y - minY,
+        };
+      });
       
       return {
         x: newElementX,
@@ -406,48 +472,56 @@ export function resizeElement(
   
   // Special handling for text elements - adjust font size proportionally
   if (element.type === 'text') {
-    // For text elements, just update the bounds
-    // The fontSize will be adjusted proportionally but simply
-    const scaleX = newWidth / originalBounds.width;
-    const scaleY = newHeight / originalBounds.height;
+    const textElement = element as any;
+    const text = textElement.text || '';
     
-    // Use average scale to maintain readability
-    const averageScale = (scaleX + scaleY) / 2;
+    // Don't store original dimensions if we're just initializing the element
+    // Only store when user actually resizes it
+    if (!textElement.originalWidth && originalBounds.width > 0 && direction) {
+      // First time resizing, store original values
+      updates.originalWidth = originalBounds.width;
+      updates.originalHeight = originalBounds.height;
+      updates.originalFontSize = textElement.fontSize || 20;
+    }
     
-    const currentFontSize = (element as any).fontSize || 20;
-    const newFontSize = Math.max(8, Math.min(72, currentFontSize * averageScale));
+    // For text elements, we'll let the drawing function handle the font size
+    // This allows the text to fill the space better, similar to Excalidraw
     
-    updates.fontSize = newFontSize;
+    // Set a flag to indicate that the text has been resized by the user
+    // This will be used in the drawing function to determine whether to auto-size
+    updates.userSetFontSize = false;
+    
+    // We don't need to calculate font size here anymore
+    // The drawing function will handle it based on the new dimensions
+    
+    // However, we should reset the fontSize if the text element is resized to a very different size
+    // This prevents issues when dramatically changing the size of a text element
+    const currentWidth = textElement.width || 0;
+    const currentHeight = textElement.height || 0;
+    
+    // If the size change is significant (more than doubling or halving), reset the fontSize
+    // to allow the drawing function to recalculate it optimally
+    const widthRatio = newWidth / currentWidth;
+    const heightRatio = newHeight / currentHeight;
+    
+    if (currentWidth > 0 && currentHeight > 0 && 
+        (widthRatio > 2 || widthRatio < 0.5 || heightRatio > 2 || heightRatio < 0.5)) {
+      updates.fontSize = undefined; // Let the drawing function calculate it fresh
+    }
   }
-  // For pen elements, update points proportionally
+  // For pen elements, scale points proportionally with improved logic
   else if (element.type === 'pen') {
     const pointsElement = element as any;
     if (pointsElement.points && pointsElement.points.length > 0) {
+      // Use the same simple scaling logic as other elements
       const scaleX = newWidth / originalBounds.width;
       const scaleY = newHeight / originalBounds.height;
       
-      // Calculate offset to maintain relative position
-      const offsetX = newX - originalBounds.x;
-      const offsetY = newY - originalBounds.y;
-      
-      // Transform points to new coordinate system
+      // Transform points with simple scaling
       const updatedPoints = pointsElement.points.map((point: Point) => {
-        // Convert point to absolute coordinates
-        const absoluteX = element.x + point.x;
-        const absoluteY = element.y + point.y;
-        
-        // Calculate relative position within original bounds
-        const relativeX = (absoluteX - originalBounds.x) / originalBounds.width;
-        const relativeY = (absoluteY - originalBounds.y) / originalBounds.height;
-        
-        // Apply scaling and offset
-        const newAbsoluteX = newX + (relativeX * newWidth);
-        const newAbsoluteY = newY + (relativeY * newHeight);
-        
-        // Convert back to relative coordinates
         return {
-          x: newAbsoluteX - newX,
-          y: newAbsoluteY - newY,
+          x: point.x * scaleX,
+          y: point.y * scaleY,
         };
       });
       

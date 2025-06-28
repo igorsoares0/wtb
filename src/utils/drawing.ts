@@ -152,19 +152,70 @@ function drawLine(ctx: CanvasRenderingContext2D, element: any): void {
 
 function drawText(ctx: CanvasRenderingContext2D, element: any): void {
   const fontFamily = element.fontFamily || 'Arial';
-  const fontSize = element.fontSize || 20;
+  let fontSize = element.fontSize || 20;
   const textAlign = element.textAlign || 'left';
   
   // Always use stroke color for text
   ctx.fillStyle = element.strokeColor;
   ctx.textBaseline = 'top';
   
-  // Set font
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  // Get text content
+  const text = element.text || '';
+  if (!text) return;
   
-  // Handle multi-line text
-  const lines = (element.text || '').split('\n');
-  if (lines.length === 0 || lines[0] === '') return;
+  // Calculate available space
+  const maxWidth = element.width;
+  const maxHeight = element.height;
+  
+  // Measure text dimensions more accurately
+  const getTextWidth = (txt: string, fs: number) => {
+    ctx.font = `${fs}px ${fontFamily}`;
+    return ctx.measureText(txt).width;
+  };
+  
+  // Calculate font size that maximizes space usage
+  // Start with a larger estimate and adjust
+  let calculatedFontSize = Math.min(
+    maxWidth / (text.length * 0.5),
+    maxHeight * 0.9
+  );
+  
+  // Binary search to find optimal font size
+  // This ensures text fills the container better
+  let minSize = 8;
+  let maxSize = 200;
+  let iterations = 0;
+  const maxIterations = 10; // Prevent infinite loops
+  
+  while (minSize <= maxSize && iterations < maxIterations) {
+    iterations++;
+    const midSize = Math.floor((minSize + maxSize) / 2);
+    const testWidth = getTextWidth(text, midSize);
+    
+    // If single line, check if it fits width
+    if (testWidth <= maxWidth * 0.95) {
+      // Text fits, try larger
+      minSize = midSize + 1;
+      calculatedFontSize = midSize;
+    } else {
+      // Text too large, try smaller
+      maxSize = midSize - 1;
+    }
+    
+    // Also check height constraint for single line
+    if (midSize * 1.2 > maxHeight * 0.95) {
+      maxSize = midSize - 1;
+    }
+  }
+  
+  // Use the calculated font size, but respect the user's choice if it's set
+  // and don't exceed reasonable bounds
+  if (!element.userSetFontSize) {
+    fontSize = Math.max(12, Math.min(120, calculatedFontSize));
+  }
+  
+  // Set font with the potentially adjusted size
+  ctx.font = `${fontSize}px ${fontFamily}`;
   
   // Calculate line height
   const lineHeight = fontSize * 1.2;
@@ -180,10 +231,56 @@ function drawText(ctx: CanvasRenderingContext2D, element: any): void {
     startX = element.x + element.width;
   }
   
+  // Draw text with word wrapping
+  let lines: string[] = [];
+  
+  // First, try to fit the text as a single line
+  const metrics = ctx.measureText(text);
+  if (metrics.width <= maxWidth) {
+    // Text fits on a single line
+    lines = [text];
+  } else {
+    // Text doesn't fit on a single line, need to wrap
+    lines = [];
+    let currentLine = '';
+    
+    // Process each word
+    for (let i = 0; i < text.split(' ').length; i++) {
+      const word = text.split(' ')[i];
+      const testLine = currentLine + (currentLine ? ' ' : '') + word;
+      const testMetrics = ctx.measureText(testLine);
+      
+      if (testMetrics.width > maxWidth && currentLine) {
+        // Line is full, push it and start a new one
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        // Add word to current line
+        currentLine = testLine;
+      }
+    }
+    
+    // Add the last line
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+  }
+  
+  // Calculate vertical centering
+  const totalTextHeight = lines.length * lineHeight;
+  let startY = element.y;
+  
+  // Center text vertically
+  if (totalTextHeight < maxHeight) {
+    startY = element.y + (maxHeight - totalTextHeight) / 2;
+  }
+  
   // Draw each line
-  lines.forEach((line: string, index: number) => {
-    const y = element.y + (index * lineHeight);
-    ctx.fillText(line, startX, y);
+  lines.forEach((line, index) => {
+    // Skip if we've already exceeded the height
+    if (startY + index * lineHeight > element.y + maxHeight) return;
+    
+    ctx.fillText(line, startX, startY + index * lineHeight);
   });
 }
 
@@ -198,34 +295,41 @@ function drawPen(ctx: CanvasRenderingContext2D, element: any): void {
       const point = element.points[0];
       ctx.arc(element.x + point.x, element.y + point.y, Math.max(ctx.lineWidth / 2, 2), 0, 2 * Math.PI);
       ctx.fill();
+    } else if (element.points.length === 2) {
+      // Two points - draw a simple line
+      const p1 = element.points[0];
+      const p2 = element.points[1];
+      ctx.moveTo(element.x + p1.x, element.y + p1.y);
+      ctx.lineTo(element.x + p2.x, element.y + p2.y);
+      ctx.stroke();
     } else {
-      // Multiple points - draw smooth path
+      // Multiple points - draw smooth curves using quadratic curves
       const points = element.points.map((p: any) => ({
         x: element.x + p.x,
         y: element.y + p.y
       }));
       
+      // Start at first point
       ctx.moveTo(points[0].x, points[0].y);
       
-      if (points.length === 2) {
-        // Just two points - draw a straight line
-        ctx.lineTo(points[1].x, points[1].y);
-      } else {
-        // Multiple points - use smooth curves
-        for (let i = 1; i < points.length - 1; i++) {
-          const currentPoint = points[i];
-          const nextPoint = points[i + 1];
-          
-          // Create smooth curve using quadratic curves
-          const controlX = (currentPoint.x + nextPoint.x) / 2;
-          const controlY = (currentPoint.y + nextPoint.y) / 2;
-          
-          ctx.quadraticCurveTo(currentPoint.x, currentPoint.y, controlX, controlY);
-        }
+      // For smooth curves, use quadratic curves between points
+      for (let i = 1; i < points.length - 1; i++) {
+        const currentPoint = points[i];
+        const nextPoint = points[i + 1];
         
-        // Draw to the final point
+        // Calculate control point as midpoint for smoother curves
+        const controlX = (currentPoint.x + nextPoint.x) / 2;
+        const controlY = (currentPoint.y + nextPoint.y) / 2;
+        
+        // Draw quadratic curve to the control point
+        ctx.quadraticCurveTo(currentPoint.x, currentPoint.y, controlX, controlY);
+      }
+      
+      // Draw final segment to last point
+      if (points.length > 2) {
         const lastPoint = points[points.length - 1];
-        ctx.lineTo(lastPoint.x, lastPoint.y);
+        const secondLastPoint = points[points.length - 2];
+        ctx.quadraticCurveTo(secondLastPoint.x, secondLastPoint.y, lastPoint.x, lastPoint.y);
       }
       
       ctx.stroke();
