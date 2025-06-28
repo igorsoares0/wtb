@@ -170,6 +170,74 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
+  // Bring selected elements to the front (top of the stack)
+  bringToFront: (ids) => {
+    set((state) => {
+      // Get elements to move and remove them from current position
+      const elementsToMove = state.elements.filter(el => ids.includes(el.id));
+      const remainingElements = state.elements.filter(el => !ids.includes(el.id));
+      
+      // Add the elements at the end (top of the stack)
+      const newElements = [...remainingElements, ...elementsToMove];
+      
+      return { elements: newElements };
+    });
+    get().pushToHistory();
+  },
+
+  // Send selected elements to the back (bottom of the stack)
+  sendToBack: (ids) => {
+    set((state) => {
+      // Get elements to move and remove them from current position
+      const elementsToMove = state.elements.filter(el => ids.includes(el.id));
+      const remainingElements = state.elements.filter(el => !ids.includes(el.id));
+      
+      // Add the elements at the beginning (bottom of the stack)
+      const newElements = [...elementsToMove, ...remainingElements];
+      
+      return { elements: newElements };
+    });
+    get().pushToHistory();
+  },
+
+  // Bring selected elements one level forward
+  bringForward: (ids) => {
+    set((state) => {
+      const newElements = [...state.elements];
+      
+      // For each selected element
+      ids.forEach(id => {
+        const index = newElements.findIndex(el => el.id === id);
+        if (index !== -1 && index < newElements.length - 1) {
+          // Swap with the next element
+          [newElements[index], newElements[index + 1]] = [newElements[index + 1], newElements[index]];
+        }
+      });
+      
+      return { elements: newElements };
+    });
+    get().pushToHistory();
+  },
+
+  // Send selected elements one level backward
+  sendBackward: (ids) => {
+    set((state) => {
+      const newElements = [...state.elements];
+      
+      // Process elements in reverse order to avoid index issues
+      [...ids].reverse().forEach(id => {
+        const index = newElements.findIndex(el => el.id === id);
+        if (index > 0) {
+          // Swap with the previous element
+          [newElements[index - 1], newElements[index]] = [newElements[index], newElements[index - 1]];
+        }
+      });
+      
+      return { elements: newElements };
+    });
+    get().pushToHistory();
+  },
+
   reset: () => {
     set({ ...initialState, history: [], historyIndex: -1 });
   },

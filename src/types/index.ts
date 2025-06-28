@@ -129,6 +129,11 @@ export interface CanvasStore extends AppState {
   setCurrentStrokeWidth: (width: number) => void;
   setCurrentOpacity: (opacity: number) => void;
   setViewportSize: (width: number, height: number) => void;
+  // Layer ordering functions
+  bringToFront: (ids: string[]) => void;
+  sendToBack: (ids: string[]) => void;
+  bringForward: (ids: string[]) => void;
+  sendBackward: (ids: string[]) => void;
   undo: () => void;
   redo: () => void;
   pushToHistory: () => void;

@@ -1,9 +1,11 @@
 import React from 'react';
 import { useCanvasStore } from '../store/canvasStore';
+// Importando ícones para os botões de ordem
+import { FiArrowUp, FiArrowDown, FiChevronsUp, FiChevronsDown } from 'react-icons/fi';
 
 const colors = [
   '#1e293b', '#dc2626', '#ea580c', '#ca8a04', '#65a30d',
-  '#059669', '#0891b2', '#2563eb', '#7c3aed', '#c026d3'
+  '#059669', '#a5d8ff', '#2563eb', '#7c3aed', '#eebefa'
 ];
 
 const PropertyPanel: React.FC = () => {
@@ -19,6 +21,10 @@ const PropertyPanel: React.FC = () => {
     setCurrentStrokeWidth,
     setCurrentOpacity,
     updateElement,
+    bringToFront,
+    sendToBack,
+    bringForward,
+    sendBackward,
   } = useCanvasStore();
 
   const selectedElements = elements.filter(el => selectedElementIds.includes(el.id));
@@ -161,6 +167,45 @@ const PropertyPanel: React.FC = () => {
           />
         </div>
 
+        {/* Layer Order Controls - Only show when elements are selected */}
+        {hasSelection && (
+          <div className="mb-4 pt-3 border-t border-gray-200">
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Ordem de Camadas
+            </label>
+            <div className="flex justify-between gap-2">
+              <button
+                onClick={() => sendToBack(selectedElementIds)}
+                className="flex-1 flex items-center justify-center py-1 px-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors"
+                title="Enviar para trás (para o fundo)"
+              >
+                <FiChevronsDown className="mr-1" /> Fundo
+              </button>
+              <button
+                onClick={() => sendBackward(selectedElementIds)}
+                className="flex-1 flex items-center justify-center py-1 px-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors"
+                title="Recuar uma posição"
+              >
+                <FiArrowDown className="mr-1" /> Recuar
+              </button>
+              <button
+                onClick={() => bringForward(selectedElementIds)}
+                className="flex-1 flex items-center justify-center py-1 px-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors"
+                title="Avançar uma posição"
+              >
+                <FiArrowUp className="mr-1" /> Avançar
+              </button>
+              <button
+                onClick={() => bringToFront(selectedElementIds)}
+                className="flex-1 flex items-center justify-center py-1 px-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors"
+                title="Trazer para frente (para o topo)"
+              >
+                <FiChevronsUp className="mr-1" /> Topo
+              </button>
+            </div>
+          </div>
+        )}
+        
         {/* Selection Info */}
         {hasSelection && (
           <div className="pt-3 border-t border-gray-200">
