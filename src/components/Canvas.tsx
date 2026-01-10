@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
 import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, Bounds } from '../types';
 import { drawElement, drawGrid } from '../utils/drawing';
@@ -46,7 +46,7 @@ const Canvas: React.FC = () => {
   } = useCanvasStore();
 
   // Elementos selecionados para uso em outras partes do código
-  const pan = { x: scrollX, y: scrollY };
+  const pan = useMemo(() => ({ x: scrollX, y: scrollY }), [scrollX, scrollY]);
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current;
@@ -385,10 +385,11 @@ const Canvas: React.FC = () => {
       addElement(element);
     }
   }, [
-    getCanvasPoint, lastClickTime, isEditingText, finishTextEditing, elements, 
-    currentTool, selectedElementIds, createTextElement, startTextEditing, 
-    currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity, 
-    addElement, setSelectedElements, lastClickElement
+    getCanvasPoint, lastClickTime, isEditingText, finishTextEditing, elements,
+    currentTool, selectedElementIds, createTextElement, startTextEditing,
+    currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity,
+    addElement, setSelectedElements, lastClickElement, elementCycleIndex,
+    lastClickPosition, scrollX, scrollY, zoom
   ]);
 
   // Rest of the existing mouse handlers remain the same...
@@ -506,9 +507,9 @@ const Canvas: React.FC = () => {
       document.body.style.cursor = 'grab';
     }
   }, [
-    getCanvasPoint, isResizing, resizeDirection, originalBounds, isDragging, 
-    selectedElementIds, isDrawing, currentElement, currentTool, elements, 
-    resizeStartPoint, dragStartPoint, updateElement, isPanning, panStartPoint, panStartScroll, setScroll
+    getCanvasPoint, isResizing, resizeDirection, originalBounds, isDragging,
+    selectedElementIds, isDrawing, currentElement, currentTool, elements,
+    resizeStartPoint, dragStartPoint, updateElement, isPanning, panStartPoint, panStartScroll, setScroll, zoom
   ]);
 
   const handleMouseUp = useCallback(() => {

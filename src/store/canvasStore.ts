@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { CanvasStore, DrawingElement } from '../types';
-import { generateId } from '../utils/helpers';
 
 const initialState = {
   elements: [],
@@ -36,7 +35,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   addElement: (element) => {
     set((state) => ({
-      elements: [...state.elements, element],
+      elements: [...state.elements, element] as DrawingElement[],
     }));
     get().pushToHistory();
   },
@@ -45,13 +44,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set((state) => ({
       elements: state.elements.map((el) =>
         el.id === id ? { ...el, ...updates } : el
-      ),
+      ) as DrawingElement[],
     }));
   },
 
   deleteElements: (ids) => {
     set((state) => ({
-      elements: state.elements.filter((el) => !ids.includes(el.id)),
+      elements: state.elements.filter((el) => !ids.includes(el.id)) as DrawingElement[],
       selectedElementIds: state.selectedElementIds.filter(
         (id) => !ids.includes(id)
       ),
@@ -84,19 +83,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   pushToHistory: () => {
     const state = get();
     const historyEntry = {
-      elements: [...state.elements],
+      elements: [...state.elements] as DrawingElement[],
       selectedElementIds: [...state.selectedElementIds],
     };
-    
+
     const newHistory = state.history.slice(0, state.historyIndex + 1);
     newHistory.push(historyEntry);
-    
+
     if (newHistory.length > 50) {
       newHistory.shift();
     } else {
       set({ historyIndex: state.historyIndex + 1 });
     }
-    
+
     set({ history: newHistory });
   },
 
@@ -105,7 +104,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (state.historyIndex > 0) {
       const prevState = state.history[state.historyIndex - 1];
       set({
-        elements: [...prevState.elements],
+        elements: [...prevState.elements] as DrawingElement[],
         selectedElementIds: [...prevState.selectedElementIds],
         historyIndex: state.historyIndex - 1,
       });
@@ -117,7 +116,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (state.historyIndex < state.history.length - 1) {
       const nextState = state.history[state.historyIndex + 1];
       set({
-        elements: [...nextState.elements],
+        elements: [...nextState.elements] as DrawingElement[],
         selectedElementIds: [...nextState.selectedElementIds],
         historyIndex: state.historyIndex + 1,
       });
@@ -162,7 +161,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     try {
       const parsed = JSON.parse(data);
       if (parsed.type === 'excalidraw' && parsed.elements) {
-        set({ elements: parsed.elements, selectedElementIds: [] });
+        set({ elements: parsed.elements as DrawingElement[], selectedElementIds: [] });
         get().pushToHistory();
       }
     } catch (error) {
@@ -176,10 +175,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       // Get elements to move and remove them from current position
       const elementsToMove = state.elements.filter(el => ids.includes(el.id));
       const remainingElements = state.elements.filter(el => !ids.includes(el.id));
-      
+
       // Add the elements at the end (top of the stack)
-      const newElements = [...remainingElements, ...elementsToMove];
-      
+      const newElements = [...remainingElements, ...elementsToMove] as DrawingElement[];
+
       return { elements: newElements };
     });
     get().pushToHistory();
@@ -191,10 +190,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       // Get elements to move and remove them from current position
       const elementsToMove = state.elements.filter(el => ids.includes(el.id));
       const remainingElements = state.elements.filter(el => !ids.includes(el.id));
-      
+
       // Add the elements at the beginning (bottom of the stack)
-      const newElements = [...elementsToMove, ...remainingElements];
-      
+      const newElements = [...elementsToMove, ...remainingElements] as DrawingElement[];
+
       return { elements: newElements };
     });
     get().pushToHistory();
@@ -203,8 +202,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Bring selected elements one level forward
   bringForward: (ids) => {
     set((state) => {
-      const newElements = [...state.elements];
-      
+      const newElements = [...state.elements] as DrawingElement[];
+
       // For each selected element
       ids.forEach(id => {
         const index = newElements.findIndex(el => el.id === id);
@@ -213,7 +212,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           [newElements[index], newElements[index + 1]] = [newElements[index + 1], newElements[index]];
         }
       });
-      
+
       return { elements: newElements };
     });
     get().pushToHistory();
@@ -222,8 +221,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Send selected elements one level backward
   sendBackward: (ids) => {
     set((state) => {
-      const newElements = [...state.elements];
-      
+      const newElements = [...state.elements] as DrawingElement[];
+
       // Process elements in reverse order to avoid index issues
       [...ids].reverse().forEach(id => {
         const index = newElements.findIndex(el => el.id === id);
@@ -232,7 +231,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           [newElements[index - 1], newElements[index]] = [newElements[index], newElements[index - 1]];
         }
       });
-      
+
       return { elements: newElements };
     });
     get().pushToHistory();

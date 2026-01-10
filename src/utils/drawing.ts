@@ -1,4 +1,4 @@
-import { DrawingElement, Point } from '../types';
+import { DrawingElement, Point, ArrowElement, LineElement, TextElement, PenElement } from '../types';
 
 export function drawElement(
   ctx: CanvasRenderingContext2D,
@@ -84,9 +84,7 @@ function drawEllipse(ctx: CanvasRenderingContext2D, element: DrawingElement): vo
 function drawDiamond(ctx: CanvasRenderingContext2D, element: DrawingElement): void {
   const centerX = element.x + element.width / 2;
   const centerY = element.y + element.height / 2;
-  const halfWidth = element.width / 2;
-  const halfHeight = element.height / 2;
-  
+
   ctx.beginPath();
   // Top point
   ctx.moveTo(centerX, element.y);
@@ -98,14 +96,14 @@ function drawDiamond(ctx: CanvasRenderingContext2D, element: DrawingElement): vo
   ctx.lineTo(element.x, centerY);
   // Close the path
   ctx.closePath();
-  
+
   if (element.fillColor !== 'transparent') {
     ctx.fill();
   }
   ctx.stroke();
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, element: any): void {
+function drawArrow(ctx: CanvasRenderingContext2D, element: ArrowElement): void {
   if (element.points && element.points.length >= 2) {
     const start = element.points[0];
     const end = element.points[element.points.length - 1];
@@ -139,7 +137,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, element: any): void {
   }
 }
 
-function drawLine(ctx: CanvasRenderingContext2D, element: any): void {
+function drawLine(ctx: CanvasRenderingContext2D, element: LineElement): void {
   if (element.points && element.points.length >= 2) {
     ctx.beginPath();
     ctx.moveTo(element.x + element.points[0].x, element.y + element.points[0].y);
@@ -150,7 +148,7 @@ function drawLine(ctx: CanvasRenderingContext2D, element: any): void {
   }
 }
 
-function drawText(ctx: CanvasRenderingContext2D, element: any): void {
+function drawText(ctx: CanvasRenderingContext2D, element: TextElement): void {
   const fontFamily = element.fontFamily || 'Arial';
   let fontSize = element.fontSize || 20;
   const textAlign = element.textAlign || 'left';
@@ -284,7 +282,7 @@ function drawText(ctx: CanvasRenderingContext2D, element: any): void {
   });
 }
 
-function drawPen(ctx: CanvasRenderingContext2D, element: any): void {
+function drawPen(ctx: CanvasRenderingContext2D, element: PenElement): void {
   if (element.points && element.points.length > 0) {
     ctx.beginPath();
     ctx.lineCap = 'round';
@@ -304,7 +302,7 @@ function drawPen(ctx: CanvasRenderingContext2D, element: any): void {
       ctx.stroke();
     } else {
       // Multiple points - draw smooth curves using quadratic curves
-      const points = element.points.map((p: any) => ({
+      const points = element.points.map((p: Point) => ({
         x: element.x + p.x,
         y: element.y + p.y
       }));
@@ -352,10 +350,10 @@ function drawSelectionOutline(ctx: CanvasRenderingContext2D, element: DrawingEle
     
     // For pen elements, calculate actual bounds from points
     if (element.type === 'pen') {
-      const pointsElement = element as any;
+      const pointsElement = element as PenElement;
       if (pointsElement.points && pointsElement.points.length > 0) {
-        const xs = pointsElement.points.map((p: any) => element.x + p.x);
-        const ys = pointsElement.points.map((p: any) => element.y + p.y);
+        const xs = pointsElement.points.map((p: Point) => element.x + p.x);
+        const ys = pointsElement.points.map((p: Point) => element.y + p.y);
         const minX = Math.min(...xs);
         const minY = Math.min(...ys);
         const maxX = Math.max(...xs);
@@ -406,18 +404,18 @@ function drawSelectionOutline(ctx: CanvasRenderingContext2D, element: DrawingEle
 export function getResizeHandles(element: DrawingElement): { x: number; y: number; direction: string }[] {
   // For line and arrow elements, show handles at start and end points
   if (element.type === 'line' || element.type === 'arrow') {
-    const pointsElement = element as any;
+    const pointsElement = element as LineElement | ArrowElement;
     if (pointsElement.points && pointsElement.points.length >= 2) {
       const startPoint = pointsElement.points[0];
       const endPoint = pointsElement.points[pointsElement.points.length - 1];
-      
+
       return [
         { x: element.x + startPoint.x, y: element.y + startPoint.y, direction: 'start' },
         { x: element.x + endPoint.x, y: element.y + endPoint.y, direction: 'end' },
       ];
     }
   }
-  
+
   // For other elements, calculate bounds and use corner handles
   let bounds = {
     x: element.x,
@@ -425,13 +423,13 @@ export function getResizeHandles(element: DrawingElement): { x: number; y: numbe
     width: element.width,
     height: element.height,
   };
-  
+
   // For pen elements, calculate actual bounds from points
   if (element.type === 'pen') {
-    const pointsElement = element as any;
+    const pointsElement = element as PenElement;
     if (pointsElement.points && pointsElement.points.length > 0) {
-      const xs = pointsElement.points.map((p: any) => element.x + p.x);
-      const ys = pointsElement.points.map((p: any) => element.y + p.y);
+      const xs = pointsElement.points.map((p: Point) => element.x + p.x);
+      const ys = pointsElement.points.map((p: Point) => element.y + p.y);
       const minX = Math.min(...xs);
       const minY = Math.min(...ys);
       const maxX = Math.max(...xs);

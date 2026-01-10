@@ -18,7 +18,7 @@ import {
 import { useCanvasStore } from '../store/canvasStore';
 import { DrawingTool } from '../types';
 
-const tools: { icon: React.ComponentType<any>; name: DrawingTool; label: string }[] = [
+const tools: { icon: React.ComponentType<{ size?: string | number }>; name: DrawingTool; label: string }[] = [
   { icon: MousePointer2, name: 'select', label: 'Select' },
   { icon: Square, name: 'rectangle', label: 'Rectangle' },
   { icon: Circle, name: 'ellipse', label: 'Circle' },
@@ -41,7 +41,6 @@ const Toolbar: React.FC = () => {
     undo,
     redo,
     exportAsJSON,
-    reset,
   } = useCanvasStore();
 
   const canUndo = historyIndex > 0;

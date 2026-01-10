@@ -1,4 +1,4 @@
-import { Point, DrawingElement, Bounds } from '../types';
+import { Point, DrawingElement, Bounds, ArrowElement, LineElement, PenElement, TextElement } from '../types';
 
 export function generateId(): string {
   return Math.random().toString(36).substr(2, 9);
@@ -27,7 +27,7 @@ export function getElementBounds(element: DrawingElement): Bounds {
   
   // For elements with points, calculate actual bounds from points
   if (element.type === 'line' || element.type === 'arrow' || element.type === 'pen') {
-    const pointsElement = element as any;
+    const pointsElement = element as ArrowElement | LineElement | PenElement;
     if (pointsElement.points && pointsElement.points.length > 0) {
       const xs = pointsElement.points.map((p: Point) => element.x + p.x);
       const ys = pointsElement.points.map((p: Point) => element.y + p.y);
@@ -66,7 +66,7 @@ export function getElementBounds(element: DrawingElement): Bounds {
 // Get actual bounds of pen element without padding (for resize calculations)
 export function getActualPenBounds(element: DrawingElement): Bounds {
   if (element.type === 'pen') {
-    const pointsElement = element as any;
+    const pointsElement = element as PenElement;
     if (pointsElement.points && pointsElement.points.length > 0) {
       const xs = pointsElement.points.map((p: Point) => element.x + p.x);
       const ys = pointsElement.points.map((p: Point) => element.y + p.y);
@@ -136,7 +136,7 @@ function hitTestBoundingBox(element: DrawingElement, point: Point): boolean {
   return isPointInBounds(point, bounds);
 }
 
-function hitTestLineElement(element: any, point: Point): boolean {
+function hitTestLineElement(element: ArrowElement | LineElement, point: Point): boolean {
   if (!element.points || element.points.length < 2) return false;
   
   const tolerance = Math.max(element.strokeWidth || 2, 5);
@@ -159,7 +159,7 @@ function hitTestLineElement(element: any, point: Point): boolean {
   return false;
 }
 
-function hitTestPenElement(element: any, point: Point): boolean {
+function hitTestPenElement(element: PenElement, point: Point): boolean {
   if (!element.points || element.points.length === 0) return false;
   
   // Increase tolerance for easier selection of pen elements
@@ -313,7 +313,7 @@ export function hitTestResizeHandle(element: DrawingElement, point: Point, zoom:
 export function getResizeHandlesForElement(element: DrawingElement): { x: number; y: number; direction: string }[] {
   // For line and arrow elements, show handles at start and end points
   if (element.type === 'line' || element.type === 'arrow') {
-    const pointsElement = element as any;
+    const pointsElement = element as ArrowElement | LineElement;
     if (pointsElement.points && pointsElement.points.length >= 2) {
       const startPoint = pointsElement.points[0];
       const endPoint = pointsElement.points[pointsElement.points.length - 1];
@@ -365,10 +365,10 @@ export function resizeElement(
   startPoint: Point,
   currentPoint: Point,
   originalBounds: Bounds
-): Partial<DrawingElement> {
+): Partial<DrawingElement> & Record<string, unknown> {
   // Handle line and arrow elements differently
   if ((element.type === 'line' || element.type === 'arrow') && (direction === 'start' || direction === 'end')) {
-    const pointsElement = element as any;
+    const pointsElement = element as ArrowElement | LineElement;
     if (pointsElement.points && pointsElement.points.length >= 2) {
       const newPoints = [...pointsElement.points];
       
@@ -463,18 +463,17 @@ export function resizeElement(
     newHeight = minSize;
   }
   
-  const updates: any = {
+  const updates: Partial<DrawingElement> & Record<string, unknown> = {
     x: newX,
     y: newY,
     width: newWidth,
     height: newHeight,
   };
-  
+
   // Special handling for text elements - adjust font size proportionally
   if (element.type === 'text') {
-    const textElement = element as any;
-    const text = textElement.text || '';
-    
+    const textElement = element as TextElement;
+
     // Don't store original dimensions if we're just initializing the element
     // Only store when user actually resizes it
     if (!textElement.originalWidth && originalBounds.width > 0 && direction) {
@@ -511,7 +510,7 @@ export function resizeElement(
   }
   // For pen elements, scale points proportionally with improved logic
   else if (element.type === 'pen') {
-    const pointsElement = element as any;
+    const pointsElement = element as PenElement;
     if (pointsElement.points && pointsElement.points.length > 0) {
       // Use the same simple scaling logic as other elements
       const scaleX = newWidth / originalBounds.width;

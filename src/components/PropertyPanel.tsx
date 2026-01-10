@@ -30,7 +30,7 @@ const PropertyPanel: React.FC = () => {
   const selectedElements = elements.filter(el => selectedElementIds.includes(el.id));
   const hasSelection = selectedElements.length > 0;
 
-  const handlePropertyChange = (property: string, value: any) => {
+  const handlePropertyChange = (property: string, value: string | number) => {
     if (hasSelection) {
       selectedElements.forEach(element => {
         updateElement(element.id, { [property]: value });
@@ -39,26 +39,30 @@ const PropertyPanel: React.FC = () => {
       // Update current tool properties
       switch (property) {
         case 'strokeColor':
-          setCurrentStrokeColor(value);
+          setCurrentStrokeColor(value as string);
           break;
         case 'fillColor':
-          setCurrentFillColor(value);
+          setCurrentFillColor(value as string);
           break;
         case 'strokeWidth':
-          setCurrentStrokeWidth(value);
+          setCurrentStrokeWidth(value as number);
           break;
         case 'opacity':
-          setCurrentOpacity(value);
+          setCurrentOpacity(value as number);
           break;
       }
     }
   };
 
-  const getPropertyValue = (property: string) => {
+  const getPropertyValue = (property: string): string | number | null => {
     if (hasSelection && selectedElements.length === 1) {
-      return selectedElements[0][property as keyof typeof selectedElements[0]];
+      const value = selectedElements[0][property as keyof typeof selectedElements[0]];
+      // Ensure we return the correct type
+      if (typeof value === 'string' || typeof value === 'number') {
+        return value;
+      }
     }
-    
+
     switch (property) {
       case 'strokeColor':
         return currentStrokeColor;
@@ -146,7 +150,7 @@ const PropertyPanel: React.FC = () => {
             type="range"
             min="1"
             max="10"
-            value={getPropertyValue('strokeWidth') || 2}
+            value={Number(getPropertyValue('strokeWidth')) || 2}
             onChange={(e) => handlePropertyChange('strokeWidth', parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
           />
@@ -161,7 +165,7 @@ const PropertyPanel: React.FC = () => {
             type="range"
             min="10"
             max="100"
-            value={getPropertyValue('opacity') || 100}
+            value={Number(getPropertyValue('opacity')) || 100}
             onChange={(e) => handlePropertyChange('opacity', parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
           />

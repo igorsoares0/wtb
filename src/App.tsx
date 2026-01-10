@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import PropertyPanel from './components/PropertyPanel';
@@ -41,21 +41,23 @@ function App() {
             e.preventDefault();
             useCanvasStore.getState().redo();
             break;
-          case 'a':
+          case 'a': {
             e.preventDefault();
             const allIds = useCanvasStore.getState().elements
               .filter(el => !el.isDeleted)
               .map(el => el.id);
             useCanvasStore.getState().setSelectedElements(allIds);
             break;
+          }
           case 'Delete':
-          case 'Backspace':
+          case 'Backspace': {
             e.preventDefault();
             const { selectedElementIds, deleteElements } = useCanvasStore.getState();
             if (selectedElementIds.length > 0) {
               deleteElements(selectedElementIds);
             }
             break;
+          }
         }
       }
 
