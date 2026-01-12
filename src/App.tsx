@@ -49,6 +49,14 @@ function App() {
             useCanvasStore.getState().setSelectedElements(allIds);
             break;
           }
+          case 'c':
+            e.preventDefault();
+            useCanvasStore.getState().copyElements();
+            break;
+          case 'v':
+            e.preventDefault();
+            useCanvasStore.getState().pasteElements();
+            break;
           case 'Delete':
           case 'Backspace': {
             e.preventDefault();
@@ -64,7 +72,9 @@ function App() {
       // Tool shortcuts
       switch (e.key) {
         case 'v':
-          useCanvasStore.getState().setCurrentTool('select');
+          if (!e.ctrlKey && !e.metaKey) {
+            useCanvasStore.getState().setCurrentTool('select');
+          }
           break;
         case 'r':
           useCanvasStore.getState().setCurrentTool('rectangle');

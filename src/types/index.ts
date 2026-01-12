@@ -125,6 +125,7 @@ export interface AppState {
     selectedElementIds: string[];
   }[];
   historyIndex: number;
+  clipboard: DrawingElement[];
 }
 
 export interface CanvasStore extends AppState {
@@ -157,4 +158,6 @@ export interface CanvasStore extends AppState {
   exportAsJSON: () => void;
   importFromJSON: (data: string) => void;
   reset: () => void;
+  copyElements: () => void;
+  pasteElements: () => void;
 }

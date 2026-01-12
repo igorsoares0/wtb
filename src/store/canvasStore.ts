@@ -19,6 +19,7 @@ const initialState = {
   viewportHeight: window.innerHeight,
   history: [],
   historyIndex: -1,
+  clipboard: [] as DrawingElement[],
 };
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -239,5 +240,45 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   reset: () => {
     set({ ...initialState, history: [], historyIndex: -1 });
+  },
+
+  copyElements: () => {
+    const state = get();
+    const selectedElements = state.elements.filter(el =>
+      state.selectedElementIds.includes(el.id)
+    );
+    set({ clipboard: selectedElements as DrawingElement[] });
+  },
+
+  pasteElements: () => {
+    const state = get();
+    if (state.clipboard.length === 0) return;
+
+    // Generate unique IDs for pasted elements
+    const generateId = () => Math.random().toString(36).substr(2, 9);
+
+    // Create copies of clipboard elements with new IDs and offset position
+    const pastedElements = state.clipboard.map(el => {
+      const newElement = {
+        ...el,
+        id: generateId(),
+        x: el.x + 20, // Offset by 20 pixels
+        y: el.y + 20,
+      } as DrawingElement;
+      return newElement;
+    });
+
+    // Add pasted elements to canvas
+    const newElements = [...state.elements, ...pastedElements] as DrawingElement[];
+
+    // Select the newly pasted elements
+    const newIds = pastedElements.map(el => el.id);
+
+    set({
+      elements: newElements,
+      selectedElementIds: newIds,
+    });
+
+    get().pushToHistory();
   },
 }));
