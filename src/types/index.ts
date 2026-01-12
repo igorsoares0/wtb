@@ -10,15 +10,16 @@ export interface Bounds {
   height: number;
 }
 
-export type DrawingTool = 
+export type DrawingTool =
   | 'select'
-  | 'rectangle' 
-  | 'ellipse' 
+  | 'rectangle'
+  | 'ellipse'
   | 'diamond'
-  | 'arrow' 
-  | 'line' 
-  | 'text' 
+  | 'arrow'
+  | 'line'
+  | 'text'
   | 'pen'
+  | 'frame'
   | 'pan';
 
 export interface BaseElement {
@@ -79,14 +80,20 @@ export interface PenElement extends BaseElement {
   points: Point[];
 }
 
-export type DrawingElement = 
-  | RectangleElement 
-  | EllipseElement 
+export interface FrameElement extends BaseElement {
+  type: 'frame';
+  name: string;
+}
+
+export type DrawingElement =
+  | RectangleElement
+  | EllipseElement
   | DiamondElement
-  | ArrowElement 
-  | LineElement 
-  | TextElement 
-  | PenElement;
+  | ArrowElement
+  | LineElement
+  | TextElement
+  | PenElement
+  | FrameElement;
 
 export interface AppState {
   elements: DrawingElement[];

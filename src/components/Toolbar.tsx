@@ -1,5 +1,5 @@
 import React from 'react';
-import { 
+import {
   MousePointer2,
   Square,
   Circle,
@@ -8,6 +8,7 @@ import {
   Minus,
   Type,
   Pen,
+  Frame,
   Hand,
   Undo2,
   Redo2,
@@ -27,6 +28,7 @@ const tools: { icon: React.ComponentType<{ size?: string | number }>; name: Draw
   { icon: Minus, name: 'line', label: 'Line' },
   { icon: Type, name: 'text', label: 'Text' },
   { icon: Pen, name: 'pen', label: 'Draw' },
+  { icon: Frame, name: 'frame', label: 'Frame' },
   { icon: Hand, name: 'pan', label: 'Pan' },
 ];
 

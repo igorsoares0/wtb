@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
-import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, Bounds } from '../types';
+import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, FrameElement, Bounds } from '../types';
 import { drawElement, drawGrid } from '../utils/drawing';
 import { generateId, hitTestElement, hitTestResizeHandle, getResizeCursor, resizeElement, getElementBounds } from '../utils/helpers';
 
@@ -18,6 +18,9 @@ const Canvas: React.FC = () => {
   const [isEditingText, setIsEditingText] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
+  const [isEditingFrameName, setIsEditingFrameName] = useState(false);
+  const [editingFrameId, setEditingFrameId] = useState<string | null>(null);
+  const [frameNameInput, setFrameNameInput] = useState('');
   const [lastClickTime, setLastClickTime] = useState(0);
   const [hasMouseMoved, setHasMouseMoved] = useState(false);
   const [lastClickElement, setLastClickElement] = useState<string | null>(null);
@@ -158,12 +161,36 @@ const Canvas: React.FC = () => {
     setIsEditingText(false);
     setEditingTextId(null);
     setTextInput('');
-    
+
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.display = 'none';
     }
   }, []);
+
+  const startFrameNameEditing = useCallback((element: FrameElement) => {
+    setIsEditingFrameName(true);
+    setEditingFrameId(element.id);
+    setFrameNameInput(element.name || 'Frame');
+    setSelectedElements([element.id]);
+  }, [setSelectedElements]);
+
+  const finishFrameNameEditing = useCallback(() => {
+    if (!isEditingFrameName || !editingFrameId) return;
+
+    const element = elements.find(el => el.id === editingFrameId) as FrameElement;
+    if (!element) return;
+
+    const newName = frameNameInput.trim() || 'Frame';
+    updateElement(editingFrameId, { name: newName });
+
+    // Clean up
+    setIsEditingFrameName(false);
+    setEditingFrameId(null);
+    setFrameNameInput('');
+
+    pushToHistory();
+  }, [isEditingFrameName, editingFrameId, frameNameInput, elements, updateElement, pushToHistory]);
 
   const createTextElement = useCallback((point: Point) => {
     const textElement: TextElement = {
@@ -205,12 +232,80 @@ const Canvas: React.FC = () => {
       return;
     }
 
+    // If editing frame name, finish it first
+    if (isEditingFrameName) {
+      finishFrameNameEditing();
+      return;
+    }
+
+    // PRIORITY: Check if clicking on frame name area (must be FIRST)
+    // This needs to be checked before any other element hit tests
+    const clickedFrameName = elements
+      .filter(el => el.type === 'frame')
+      .find(el => {
+        const frameEl = el as FrameElement;
+        
+        // Calculate the area where the frame name text is displayed
+        // The text is drawn at y = frameEl.y - 8 (8px above the frame)
+        // We need to create a clickable area for the text
+        const textY = frameEl.y - 8;
+        const nameHeight = 24; // Height of the clickable text area (larger for easier clicking)
+        const nameY = textY - nameHeight; // Start of clickable area
+        
+        // Measure text width (approximate based on font size and text length)
+        // For 16px font with weight 600, approximately 9-10px per character
+        const textWidth = (frameEl.name || 'Frame').length * 10;
+        
+        // Create a wider clickable area for easier interaction
+        const clickableWidth = Math.max(textWidth + 20, 80); // Add padding and minimum width
+        
+        return (
+          point.x >= frameEl.x - 10 && // Add padding on left
+          point.x <= frameEl.x + clickableWidth && // Use calculated width
+          point.y >= nameY &&
+          point.y <= textY + 8 // Add padding below text
+        );
+      }) as FrameElement | undefined;
+
+    // If clicked on frame name area
+    if (clickedFrameName) {
+      // Check if this is a double-click on the same frame name
+      // Check both element ID and position (within 15px tolerance for zoom)
+      const isSameFrame = lastClickElement === clickedFrameName.id;
+      const tolerance = 15 / zoom; // Adjust tolerance based on zoom level
+      const isSamePosition = lastClickPosition && 
+        Math.abs(lastClickPosition.x - point.x) < tolerance && 
+        Math.abs(lastClickPosition.y - point.y) < tolerance;
+      
+      // Double-click detection: same frame, same position (within tolerance), and within time window
+      if (timeSinceLastClick < 500 && timeSinceLastClick > 0 && isSameFrame && isSamePosition) {
+        // Double-click detected! Start editing
+        e.preventDefault();
+        e.stopPropagation();
+        startFrameNameEditing(clickedFrameName);
+        // Reset tracking to prevent accidental re-triggering
+        setLastClickTime(0);
+        setLastClickElement(null);
+        setLastClickPosition(null);
+        return;
+      } else {
+        // Single click - track for next click to detect double-click
+        setLastClickElement(clickedFrameName.id);
+        setLastClickPosition(point);
+        // Also select the frame but don't start dragging (will wait for mouse move)
+        setSelectedElements([clickedFrameName.id]);
+        // Don't start dragging immediately - wait to see if this becomes a double-click
+        // The dragging will start in handleMouseMove if the mouse actually moves
+        return;
+      }
+    }
+
     // Check for double-click on text elements (within 500ms)
     if (timeSinceLastClick < 500) {
-      const clickedElement = elements.find(el => 
+      const clickedElement = elements.find(el =>
         el.type === 'text' && hitTestElement(el, point)
       ) as TextElement;
-      
+
       if (clickedElement && lastClickElement === clickedElement.id) {
         startTextEditing(clickedElement);
         return;
@@ -360,6 +455,29 @@ const Canvas: React.FC = () => {
       setIsDrawing(true);
       setHasMouseMoved(false);
       addElement(element);
+    } else if (currentTool === 'frame') {
+      const element: FrameElement = {
+        id: generateId(),
+        type: 'frame',
+        x: point.x,
+        y: point.y,
+        width: 0,
+        height: 0,
+        strokeColor: currentStrokeColor,
+        fillColor: 'transparent',
+        strokeWidth: 2,
+        opacity: currentOpacity,
+        roughness: 1,
+        angle: 0,
+        isDeleted: false,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        name: 'Frame',
+      };
+
+      setCurrentElement(element);
+      setIsDrawing(true);
+      setHasMouseMoved(false);
+      addElement(element);
     } else if (currentTool === 'pen') {
       const element: PenElement = {
         id: generateId(),
@@ -389,7 +507,8 @@ const Canvas: React.FC = () => {
     currentTool, selectedElementIds, createTextElement, startTextEditing,
     currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity,
     addElement, setSelectedElements, lastClickElement, elementCycleIndex,
-    lastClickPosition, scrollX, scrollY, zoom
+    lastClickPosition, scrollX, scrollY, zoom, isEditingFrameName, finishFrameNameEditing,
+    startFrameNameEditing
   ]);
 
   // Rest of the existing mouse handlers remain the same...
@@ -670,6 +789,49 @@ const Canvas: React.FC = () => {
         style={{ display: 'none' }}
         className="absolute"
       />
+      {isEditingFrameName && editingFrameId && (
+        <input
+          type="text"
+          value={frameNameInput}
+          onChange={(e) => setFrameNameInput(e.target.value)}
+          onBlur={finishFrameNameEditing}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              finishFrameNameEditing();
+            } else if (e.key === 'Escape') {
+              setIsEditingFrameName(false);
+              setEditingFrameId(null);
+              setFrameNameInput('');
+            }
+          }}
+          autoFocus
+          style={{
+            position: 'absolute',
+            left: `${
+              ((elements.find(el => el.id === editingFrameId) as FrameElement)?.x || 0) * zoom +
+              pan.x +
+              (canvasRef.current?.getBoundingClientRect().left || 0)
+            }px`,
+            top: `${
+              ((elements.find(el => el.id === editingFrameId) as FrameElement)?.y || 0) * zoom +
+              pan.y +
+              (canvasRef.current?.getBoundingClientRect().top || 0) -
+              32
+            }px`,
+            fontSize: `${16 * zoom}px`,
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: '600',
+            color: (elements.find(el => el.id === editingFrameId) as FrameElement)?.strokeColor || '#000',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            border: '2px solid #6366f1',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            outline: 'none',
+            zIndex: 1001,
+            minWidth: '100px',
+          }}
+        />
+      )}
     </div>
   );
 };

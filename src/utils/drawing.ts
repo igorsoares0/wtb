@@ -1,4 +1,4 @@
-import { DrawingElement, Point, ArrowElement, LineElement, TextElement, PenElement } from '../types';
+import { DrawingElement, Point, ArrowElement, LineElement, TextElement, PenElement, FrameElement } from '../types';
 
 export function drawElement(
   ctx: CanvasRenderingContext2D,
@@ -49,8 +49,11 @@ export function drawElement(
     case 'pen':
       drawPen(ctx, element);
       break;
+    case 'frame':
+      drawFrame(ctx, element);
+      break;
   }
-  
+
   // Draw selection outline
   if (isSelected) {
     drawSelectionOutline(ctx, element, zoom);
@@ -332,6 +335,41 @@ function drawPen(ctx: CanvasRenderingContext2D, element: PenElement): void {
       
       ctx.stroke();
     }
+  }
+}
+
+function drawFrame(ctx: CanvasRenderingContext2D, element: FrameElement): void {
+  const cornerRadius = 8;
+
+  // Draw frame background with rounded corners
+  ctx.beginPath();
+  ctx.roundRect(element.x, element.y, element.width, element.height, cornerRadius);
+
+  // Fill with very light background
+  if (element.fillColor !== 'transparent') {
+    ctx.fillStyle = element.fillColor;
+    ctx.globalAlpha = 0.05;
+    ctx.fill();
+    ctx.globalAlpha = element.opacity / 100;
+  }
+
+  // Draw frame border
+  ctx.strokeStyle = element.strokeColor;
+  ctx.lineWidth = element.strokeWidth;
+  ctx.stroke();
+
+  // Draw frame name OUTSIDE and ABOVE the frame
+  if (element.name) {
+    ctx.save();
+    ctx.font = `600 16px Arial, sans-serif`;
+    ctx.fillStyle = element.strokeColor;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+
+    // Position text above the frame with some spacing
+    const textY = element.y - 8;
+    ctx.fillText(element.name, element.x, textY);
+    ctx.restore();
   }
 }
 

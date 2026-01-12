@@ -89,6 +89,9 @@ function App() {
         case 'd':
           useCanvasStore.getState().setCurrentTool('pen');
           break;
+        case 'f':
+          useCanvasStore.getState().setCurrentTool('frame');
+          break;
         case 'h':
           useCanvasStore.getState().setCurrentTool('pan');
           break;
