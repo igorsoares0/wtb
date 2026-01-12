@@ -731,6 +731,15 @@ const Canvas: React.FC = () => {
   // Handle keyboard events
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if user is editing text or frame name - prevent deletion of elements
+      const activeElement = document.activeElement;
+      const isInputActive = activeElement && (
+        activeElement.tagName === 'TEXTAREA' || 
+        activeElement.tagName === 'INPUT' ||
+        (activeElement as HTMLElement).contentEditable === 'true'
+      );
+
+      // If editing text, handle text-specific shortcuts
       if (isEditingText) {
         if (e.key === 'Escape') {
           cancelTextEditing();
@@ -738,6 +747,12 @@ const Canvas: React.FC = () => {
           e.preventDefault();
           finishTextEditing();
         }
+        return;
+      }
+
+      // If editing frame name or any input is active, don't process delete shortcuts
+      // Let the input handle Delete/Backspace for text editing
+      if (isEditingFrameName || isInputActive) {
         return;
       }
 
@@ -755,7 +770,7 @@ const Canvas: React.FC = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isEditingText, selectedElementIds, updateElement, setSelectedElements, pushToHistory, cancelTextEditing, finishTextEditing]);
+  }, [isEditingText, isEditingFrameName, selectedElementIds, updateElement, setSelectedElements, pushToHistory, cancelTextEditing, finishTextEditing]);
 
   // Handle text input changes
   const handleTextInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
