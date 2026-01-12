@@ -9,6 +9,7 @@ import {
   Type,
   Pen,
   Frame,
+  Image as ImageIcon,
   Hand,
   Undo2,
   Redo2,
@@ -62,6 +63,22 @@ const Toolbar: React.FC = () => {
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataURL = event.target?.result as string;
+        // Store the image data URL and switch to image tool
+        localStorage.setItem('pendingImageUpload', dataURL);
+        setCurrentTool('image');
+      };
+      reader.readAsDataURL(file);
+    }
+    // Reset input so same file can be uploaded again
+    e.target.value = '';
+  };
+
   return (
     <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-2 flex items-center gap-1">
@@ -81,10 +98,28 @@ const Toolbar: React.FC = () => {
               <Icon size={18} />
             </button>
           ))}
+
+          {/* Image Upload Button */}
+          <label
+            className={`p-2 rounded-lg transition-all duration-200 cursor-pointer ${
+              currentTool === 'image'
+                ? 'bg-indigo-100 text-indigo-600 shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`}
+            title="Insert Image"
+          >
+            <ImageIcon size={18} />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+          </label>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 pl-2">
+        <div className="flex items-center gap-1 pl-2 border-l border-gray-200">
           <button
             onClick={undo}
             disabled={!canUndo}

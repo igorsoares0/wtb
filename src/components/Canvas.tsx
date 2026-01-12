@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useCanvasStore } from '../store/canvasStore';
-import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, FrameElement, Bounds } from '../types';
+import { DrawingElement, Point, ArrowElement, LineElement, PenElement, TextElement, FrameElement, ImageElement, Bounds } from '../types';
 import { drawElement, drawGrid } from '../utils/drawing';
 import { generateId, hitTestElement, hitTestResizeHandle, getResizeCursor, resizeElement, getElementBounds } from '../utils/helpers';
 
@@ -478,6 +478,43 @@ const Canvas: React.FC = () => {
       setIsDrawing(true);
       setHasMouseMoved(false);
       addElement(element);
+    } else if (currentTool === 'image') {
+      // Get the pending image data URL from localStorage
+      const dataURL = localStorage.getItem('pendingImageUpload');
+      if (dataURL) {
+        // Load the image to get its dimensions
+        const img = new Image();
+        img.onload = () => {
+          const element: ImageElement = {
+            id: generateId(),
+            type: 'image',
+            x: point.x,
+            y: point.y,
+            width: img.width,
+            height: img.height,
+            strokeColor: currentStrokeColor,
+            fillColor: 'transparent',
+            strokeWidth: 0,
+            opacity: 100,
+            roughness: 0,
+            angle: 0,
+            isDeleted: false,
+            seed: Math.floor(Math.random() * 2 ** 31),
+            dataURL: dataURL,
+            originalWidth: img.width,
+            originalHeight: img.height,
+          };
+
+          addElement(element);
+          pushToHistory();
+          setSelectedElements([element.id]);
+          // Clear the pending upload
+          localStorage.removeItem('pendingImageUpload');
+          // Switch back to select tool
+          useCanvasStore.getState().setCurrentTool('select');
+        };
+        img.src = dataURL;
+      }
     } else if (currentTool === 'pen') {
       const element: PenElement = {
         id: generateId(),
@@ -508,7 +545,7 @@ const Canvas: React.FC = () => {
     currentStrokeColor, currentFillColor, currentStrokeWidth, currentOpacity,
     addElement, setSelectedElements, lastClickElement, elementCycleIndex,
     lastClickPosition, scrollX, scrollY, zoom, isEditingFrameName, finishFrameNameEditing,
-    startFrameNameEditing
+    startFrameNameEditing, pushToHistory
   ]);
 
   // Rest of the existing mouse handlers remain the same...

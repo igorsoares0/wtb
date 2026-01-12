@@ -1,4 +1,4 @@
-import { DrawingElement, Point, ArrowElement, LineElement, TextElement, PenElement, FrameElement } from '../types';
+import { DrawingElement, Point, ArrowElement, LineElement, TextElement, PenElement, FrameElement, ImageElement } from '../types';
 
 export function drawElement(
   ctx: CanvasRenderingContext2D,
@@ -51,6 +51,9 @@ export function drawElement(
       break;
     case 'frame':
       drawFrame(ctx, element);
+      break;
+    case 'image':
+      drawImage(ctx, element);
       break;
   }
 
@@ -370,6 +373,56 @@ function drawFrame(ctx: CanvasRenderingContext2D, element: FrameElement): void {
     const textY = element.y - 8;
     ctx.fillText(element.name, element.x, textY);
     ctx.restore();
+  }
+}
+
+// Cache for loaded images
+const imageCache = new Map<string, HTMLImageElement>();
+
+function drawImage(ctx: CanvasRenderingContext2D, element: ImageElement): void {
+  let img = imageCache.get(element.dataURL);
+
+  if (!img) {
+    img = new Image();
+    img.src = element.dataURL;
+    imageCache.set(element.dataURL, img);
+
+    // If image isn't loaded yet, it will be drawn on next render
+    if (!img.complete) {
+      img.onload = () => {
+        // Trigger a re-render when image loads
+        // This is handled automatically by React's render cycle
+      };
+      return;
+    }
+  }
+
+  if (img.complete) {
+    try {
+      ctx.drawImage(
+        img,
+        element.x,
+        element.y,
+        element.width,
+        element.height
+      );
+    } catch {
+      // If image fails to draw, show a placeholder
+      ctx.fillStyle = '#f3f4f6';
+      ctx.fillRect(element.x, element.y, element.width, element.height);
+      ctx.strokeStyle = '#d1d5db';
+      ctx.strokeRect(element.x, element.y, element.width, element.height);
+
+      // Draw an X to indicate broken image
+      ctx.strokeStyle = '#9ca3af';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(element.x, element.y);
+      ctx.lineTo(element.x + element.width, element.y + element.height);
+      ctx.moveTo(element.x + element.width, element.y);
+      ctx.lineTo(element.x, element.y + element.height);
+      ctx.stroke();
+    }
   }
 }
 

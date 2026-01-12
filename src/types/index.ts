@@ -20,6 +20,7 @@ export type DrawingTool =
   | 'text'
   | 'pen'
   | 'frame'
+  | 'image'
   | 'pan';
 
 export interface BaseElement {
@@ -85,6 +86,13 @@ export interface FrameElement extends BaseElement {
   name: string;
 }
 
+export interface ImageElement extends BaseElement {
+  type: 'image';
+  dataURL: string;
+  originalWidth: number;
+  originalHeight: number;
+}
+
 export type DrawingElement =
   | RectangleElement
   | EllipseElement
@@ -93,7 +101,8 @@ export type DrawingElement =
   | LineElement
   | TextElement
   | PenElement
-  | FrameElement;
+  | FrameElement
+  | ImageElement;
 
 export interface AppState {
   elements: DrawingElement[];
